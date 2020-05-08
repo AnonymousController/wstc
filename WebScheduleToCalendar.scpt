@@ -385,7 +385,7 @@ to create_settings()
 			make new property list item at end with properties {kind:string, name:"title", value:eventTitle}
 			make new property list item at end with properties {kind:string, name:"calendar", value:calName}
 			make new property list item at end with properties {kind:string, name:"address", value:address}
-			make new property list item at end with properties {kind:string, name:createOffsites, value:createOffsites}
+			make new property list item at end with properties {kind:string, name:"createOffsites", value:createOffsites}
 			make new property list item at end with properties {kind:boolean, name:"appendShiftID", value:appendShift}
 			make new property list item at end with properties {kind:boolean, name:"descriptionIsShiftID", value:populateDescription}
 			make new property list item at end with properties {kind:boolean, name:"closeSafariWhenDone", value:closeSafariWhenDone}
