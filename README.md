@@ -11,7 +11,7 @@ Download the file [WebScheduleToCalendar.scpt](WebScheduleToCalendar.scpt) and o
 Save the script anywhere (I usually use ~/Library/Scripts, which may not exist by default) and run it when desired.
 You might set it to run on login, or with a `cron` job, or from the macOS menu bar.
 
-Probably the easiest for most people, however, will be to save the script as a standalone application using File&nbsp;>&nbsp;Export… in Script&nbsp;Editor and selecting File&nbsp;Format:&nbsp;Application. Again, the script can be saved anywhere, including the standard /Applications folder.
+Probably the easiest for most people, however, will be to save the script as a standalone application using *File&nbsp;>&nbsp;Export…* in Script&nbsp;Editor and selecting *File&nbsp;Format:&nbsp;Application*. Again, the script can be saved anywhere, including the standard /Applications folder.
 <br/>
 
 ## Requirements
