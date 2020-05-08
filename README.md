@@ -6,7 +6,7 @@ Script to copy a user's work schedule from Web Scheduler to the Calendar applica
 <br/>
 
 # How to use
-Download the file WebScheduleToCalendar.scpt and open it in Script&nbsp;Editor (a default macOS application found in /Applications/Utilities), or copy the contents of that file and paste into a new Script Editor file.
+Download the file [WebScheduleToCalendar.scpt](WebScheduleToCalendar.scpt) and open it in Script&nbsp;Editor (a default macOS application found in /Applications/Utilities), or copy the contents of that file and paste into a new Script Editor file.
 
 Save the script anywhere (I usually use ~/Library/Scripts, which may not exist by default) and run it when desired.
 You might set it to run on login, or with a `cron` job, or from the macOS menu bar.
