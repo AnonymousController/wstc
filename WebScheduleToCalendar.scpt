@@ -80,7 +80,6 @@ The login information will be encrypted and stored locally for use next time you
 property titlePrompt : "Enter the event title to be used for the work events:"
 property calPrompt : "Choose which calendar to use for the work events:"
 property addressPrompt : "Enter your facility's address if desired, or leave blank:"
-property offsitePrompt : "Should work events be created for offsite shifts?"
 property appendPrompt : "Should the event titles include the shift ID?"
 property populatePrompt : "Should the event descriptions include the shift ID?"
 property closeSafariPrompt : "The script will open the WMT Scheduler website.
@@ -121,7 +120,7 @@ global settingsPath, databasePath, legendPath
 global s_plist, l_plist, db_plist
 global eventRec, shiftRec
 global eventTitle, calName, address, appendShift, populateDescription
-global createOffsites, closeSafariWhenDone, closeCalendarWhenDone
+global closeSafariWhenDone, closeCalendarWhenDone
 global email, encPin, safariWasRunning, calendarWasRunning
 global currentStartDate
 
@@ -328,7 +327,6 @@ to import_settings()
 		set eventTitle to value of property list item "title" of s_plist
 		set calName to value of property list item "calendar" of s_plist
 		set address to value of property list item "address" of s_plist
-		set createOffsites to value of property list item "createOffsites" of s_plist
 		set populateDescription to value of property list item "descriptionIsShiftID" of s_plist
 		set appendShift to value of property list item "appendShiftID" of s_plist
 		set closeSafariWhenDone to value of property list item "closeSafariWhenDone" of s_plist
@@ -363,7 +361,6 @@ to create_settings()
 	
 	-- get the rest of user settings
 	set address to my_prompt(addressPrompt, settingsPromptTitle, "")
-	set createOffsites to my_prompt_bool(offsitePrompt, settingsPromptTitle)
 	set appendShift to my_prompt_bool(appendPrompt, settingsPromptTitle)
 	set populateDescription to my_prompt_bool(populatePrompt, settingsPromptTitle)
 	set closeSafariWhenDone to my_prompt_bool(closeSafariPrompt, settingsPromptTitle)
@@ -385,7 +382,6 @@ to create_settings()
 			make new property list item at end with properties {kind:string, name:"title", value:eventTitle}
 			make new property list item at end with properties {kind:string, name:"calendar", value:calName}
 			make new property list item at end with properties {kind:string, name:"address", value:address}
-			make new property list item at end with properties {kind:string, name:"createOffsites", value:createOffsites}
 			make new property list item at end with properties {kind:boolean, name:"appendShiftID", value:appendShift}
 			make new property list item at end with properties {kind:boolean, name:"descriptionIsShiftID", value:populateDescription}
 			make new property list item at end with properties {kind:boolean, name:"closeSafariWhenDone", value:closeSafariWhenDone}
@@ -650,22 +646,12 @@ to create_events()
 			set thisKey to thisShift -- we will strip thisShift down to a key, but want to save the full info as well
 			set thisEventTitle to eventTitle
 			
-			-- initialize bools to indicate type/status of shift
+			-- initialize bool to indicate admin shift
 			set isAdminShift to false
-			set isOffsiteShift to false
-			set createEvent to true
 			
-			-- check to see if this is an offsite shift and react according to user preference
-			if (str_contains(thisKey, offsiteChar)) then
-				set isOffsiteShift to true
-				if (not createOffsites) then set createEvent to false
-			end if -- thisKey contains offsiteChar
-			
-			-- check to make sure the shift contains a time (i.e. is not an RDO/leave/classroom)
-			if (not str_contains(thisKey, digits)) then ¬
-				set createEvent to false
-			
-			if (createEvent) then
+			-- make sure shift is a "true" work shift (not leave/RDO/training/etc)
+			-- check for the abscence of "<" and the presence of a digit
+			if ((not str_contains(thisKey, offsiteChar)) and (str_contains(thisKey, digits))) then
 				-- check for admin shift indicator (@), log it, then get rid of it
 				if str_contains(thisKey, adminChar) then
 					set isAdminShift to true
@@ -720,7 +706,6 @@ to create_events()
 						set thisEvent to make new event with properties ¬
 							{summary:thisEventTitle, description:thisShift, start date:evtStartDate, end date:evtEndDate, location:address}
 						if (populateDescription) then set description of thisEvent to thisShift
-						if (isOffsiteShift) then delete location of thisEvent
 						
 						-- store the event UID
 						set item dayNum of eventIDs to (uid of thisEvent)
@@ -739,14 +724,12 @@ to create_events()
 								if (summary ≠ eventTitle) then set summary to thisEventTitle
 								if (populateDescription) then if (description ≠ thisShift) then ¬
 									set description to thisShift
-								if (isOffsiteShift) then delete location
 							end tell -- thisEvent
 						else -- i.e. if there is an ID in eventIDs but the event can't be found (user may have deleted it)
 							-- go ahead and recreate it
 							set thisEvent to make new event with properties ¬
 								{summary:thisEventTitle, description:thisShift, start date:evtStartDate, end date:evtEndDate, location:address}
 							if (populateDescription) then set description of thisEvent to thisShift
-							if (isOffsiteShift) then delete location of thisEvent
 							
 							-- event UID is read-only, so just get the new one and write it over the one we had stored
 							set item dayNum of eventIDs to (uid of thisEvent)
