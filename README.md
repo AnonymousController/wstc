@@ -12,6 +12,13 @@ Save the script anywhere (I usually use ~/Library/Scripts, which may not exist b
 You might set it to run on login, or with a `cron` job, or from the macOS menu bar.
 
 Probably the easiest for most people, however, will be to save the script as a standalone application using *File&nbsp;>&nbsp;Export…* in Script&nbsp;Editor and selecting *File&nbsp;Format:&nbsp;Application*. Again, the script can be saved anywhere, including the standard /Applications folder.
+
+#### Shift Times
+If the script encounters a shift for which it does not have a starttime/endtime pair stored, it will prompt you to enter those times. Enter the times *in the format you have set under System&nbsp;Preferences > Language&nbsp;&&nbsp;Region* (i.e. 12- or 24-hour time, as appropriate). Check this first if your event times are not saving properly.
+
+#### `useOldWFPL` Setting
+The second property seen at the very beginning of the script is called `useOldWFPL`. If this setting is `true` (the default), the script uses a non-elegant piece of JavaScript to check if a given webpage has loaded. This is prone to errors, especially if a page loads too fast.  
+There is a second way of checking if a page has loaded, which is generally more reliable. This second method requires that the script have assistive access to System&nbsp;Events under Sys&nbsp;Prefs > Sec&nbsp;&&nbsp;Privacy > Privacy. If you are okay with that, change this property to `false`.
 <br/>
 
 ## Requirements
