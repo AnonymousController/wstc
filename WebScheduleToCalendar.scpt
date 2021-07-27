@@ -22,8 +22,18 @@
 -- edit this property if you consistently have problems with the script running before a page loads
 property globalPreDelay : 0
 
+-- whether or not to use the "old" (original) algorithm to detect if a proper webpage has loaded
+-- setting this to "false" may result in more reliable webpage loading detection
+-- but it requires that WSTC has access to "System Events" under Sys Prefs > Sec & Privacy > Privacy
+-- so the default is "true" and you can change it if you wish
+property useOldWFPL : true
+
 -- constants related to logging in to MyAccess
-property webScheduleURL : "https://wmtscheduler.faa.gov/WMT_LogOn/"
+-- setting the original URL to /WorksheetView/Home is important because:
+-- ...it provides a known starting point (the current pay period) every time
+-- ...if the user already has a logged-in session, we can skip the MyAccess login process
+-- ...if the user is not logged in, attempting to access this URL brings us directly to MyAccess login
+property webScheduleURL : "https://wmtscheduler.faa.gov/Views/WorksheetView/Home"
 property wmtLoginButtonID : "btnLogin"
 property emailInputID : "userEmail"
 property emailButtonID : "cont"
@@ -40,14 +50,7 @@ property strInScheduleView : "<title>My Schedule</title>"
 property strInLegendView : "<title>Shift Legend</title>"
 
 -- constants for navigating within the WMT Scheduler website
-property scheduleViewURL : "Index.asp?Action=actmySchedule"
-property shiftLegendURL : "Index.asp?Action=dspshiftLegend"
-
--- constants for getting the shift legends
--- there are six centered header cells in the main table
--- ...and six cells per row, but the "Remarks" cell is not centered
-property numCenteredHeadingCells : 6
-property numCenteredContentCells : 5
+property scheduleViewURL : "/Views/MySchedule"
 
 -- constants for getting shifts from "my schedule" view
 -- there are five childNodes in each cell's div: weekday, <br>, date, <br>, shift
@@ -69,6 +72,7 @@ property offsiteChar : "<"
 -- constants for GUI text
 property loginPromptTitle : "WSTC: MyAccess Login Settings"
 property settingsPromptTitle : "WSTC: Script Settings"
+property shiftLegendsPromptTitle : "WSTC: Shift Time Settings"
 property welcomeText : "Welcome to the WebScheduleToCalendar script! The script will do the following:
 
 1. Ask your permission to use various applications and settings. More information can be found in the README file.
@@ -101,8 +105,16 @@ Please re-enter the email address you use for MyAccess:"
 property badPinPrompt : "MyAccess has rejected the PIN and/or secret answer.
 
 Please re-enter the PIN you use for MyAccess:"
-property strAllowJSinAE : "The script needs to run JavaScript in Safari in order to apply your login information and get the shifts from WMT Scheduler. The system will ask for an administrator's username and password to allow this.
+property timePrompt1 : "WSTC has encountered a shift it does not have a legend for. The shift is:
 
+"
+property startTimePrompt2 : "
+
+What is the START TIME for this shift (local time)?"
+property endTimePrompt2 : "
+
+What is the END TIME for this shift (local time)?"
+property strAllowJSinAE : "The script needs to run JavaScript in Safari in order to apply your login information and get the shifts from WMT Scheduler. The system will ask for an administrator's username and password to allow this.
 The script can click through the menu items for you, which will require permission to control accessibility elements, or you can do the process manually by following the linked instructions. Which would you like?"
 property strWaitForJS : "Please click Continue once you have allowed JavaScript access in Safari"
 property strWaitForUser : "Waiting for user input…"
@@ -360,14 +372,14 @@ to create_settings()
 	end if
 	
 	-- get the rest of user settings
-	set address to my_prompt(addressPrompt, settingsPromptTitle, "")
+	set address to my_prompt(addressPrompt, settingsPromptTitle, "800 Independence Ave SW, Washington, DC")
 	set appendShift to my_prompt_bool(appendPrompt, settingsPromptTitle)
 	set populateDescription to my_prompt_bool(populatePrompt, settingsPromptTitle)
 	set closeSafariWhenDone to my_prompt_bool(closeSafariPrompt, settingsPromptTitle)
 	set closeCalendarWhenDone to my_prompt_bool(closeCalendarPrompt, settingsPromptTitle)
 	
 	-- get login settings
-	set email to my_prompt(emailPrompt, loginPromptTitle, "")
+	set email to my_prompt(emailPrompt, loginPromptTitle, "archie.league@faa.gov")
 	set encPin to my_prompt_enc(pinPrompt, loginPromptTitle, pw) -- returns encrypted text
 	
 	-- create s_plist and save the info
@@ -404,7 +416,7 @@ end create_settings
 ------------------------------------------------------
 to login()
 	-- open Web Scheduler splash page
-	set progress additional description to "Opening WMT Scheduler login page"
+	set progress additional description to "Opening WMT Scheduler"
 	if not (safariWasRunning) then
 		-- no need to activate, we activated it during initialize()
 		-- open the WMT website in the current tab/window
@@ -414,15 +426,25 @@ to login()
 		tell application "Safari" to open location webScheduleURL
 	end if -- not safariWasRunning
 	
-	-- wait until WMT splash page loads
-	wait_for_page_load(strInWMTSplashPage)
+	-- wait until login or home page loads
+	set loadedPage to wait_for_page_load3(strInWMTSplashPage, strInEmailEntryPage, strInWorksheetView)
+	if (loadedPage = 3) then
+		-- we had a logged-in session already, yay. Exit login() handler
+		return
+	else if (loadedPage = 2) then
+		-- we have arrived directly at the MyAccess email entry page; continue
+	else if (loadedPage = 1) then
+		-- we have arrived at the main WMT splash page; click the login button, which will take us to MyAccess:
+		set progress additional description to "Opening MyAccess login page"
+		click_ID(wmtLoginButtonID)
+		wait_for_page_load(strInEmailEntryPage)
+	else
+		-- the page loaded was none of the expected pages
+		error "The WMT Splash Page failed to load"
+	end if -- loadedPage = ?
 	set progress completed steps to 22
 	
-	-- click the login button, which will take us to MyAccess
-	set progress additional description to "Opening MyAccess login page"
-	click_ID(wmtLoginButtonID)
-	wait_for_page_load(strInEmailEntryPage)
-	
+	-- whether we got here directly (lP = 2) or indirectly (lP=1), we should be at the MyAccess email entry page
 	-- enter user's email address, repeating process if the email was rejected
 	repeat
 		-- enter email address and manually remove "disabled" attribute on button; submit
@@ -440,7 +462,7 @@ to login()
 		-- if wfpl returns false we must still be on the email entry page
 		-- so the email must have been wrong
 		-- ask for user's corrected email and write it back to s_plist
-		set email to my_prompt(badEmailPrompt, settingsPromptTitle, "")
+		set email to my_prompt(badEmailPrompt, settingsPromptTitle, "archie.league@faa.gov")
 		tell application "System Events" to tell property list items of s_plist to ¬
 			make new property list item at end with properties {kind:string, name:"email", value:email}
 	end repeat
@@ -552,14 +574,20 @@ to get_shifts()
 				set eventRec to make new property list item at end with properties {kind:record, name:"eventIDs"}
 				set shiftRec to make new property list item at end with properties {kind:record, name:"shifts"}
 			end tell -- db_plist
-		end if -- not exists file databasePath
+		end if -- exists file databasePath
+		if (exists file legendPath) then
+			set l_plist to property list file legendPath
+		else
+			set parentDict to make new property list item with properties {kind:record}
+			set l_plist to make new property list file with properties {contents:parentDict, name:legendPath}
+		end if -- exists file legendPath
 	end tell -- app "SE"
 	set progress completed steps to 35
 	
 	-- store the first Sunday of the pay period we defaulted to—this is the current pay period we're in
-	set currentStartDate to date (get_val_by_selector("td", "align", "center", 0, indexOfDateInScheduleDiv))
+	set currentStartDate to date (get_val_by_selector("td", "style", "text-align:center", 0, indexOfDateInScheduleDiv))
 	
-	-- scrape one pay period's worth of shifts at a time and place them in the Settings plist
+	-- scrape one pay period's worth of shifts at a time and place them in the Database plist
 	repeat
 		set progress additional description to "Scraping shifts"
 		-- initialize list of shifts
@@ -568,12 +596,12 @@ to get_shifts()
 		-- get the 14 shifts one-by-one and add them to the new list
 		repeat with thisDay from 0 to (daysInPP - 1)
 			set progress additional description to "Scraping shifts (" & thisDay + 1 & " of " & daysInPP & ")"
-			set thisShift to get_val_by_selector("td", "align", "center", thisDay, indexOfShiftInScheduleDiv)
+			set thisShift to get_val_by_selector("td", "style", "text-align:center", thisDay, indexOfShiftInScheduleDiv)
 			set shifts to (shifts & {thisShift})
 		end repeat
 		
 		-- place shifts in the database plist as an array within "shifts", using the first date of the PP as the key
-		set thisStartDate to get_val_by_selector("td", "align", "center", 0, indexOfDateInScheduleDiv)
+		set thisStartDate to get_val_by_selector("td", "style", "text-align:center", 0, indexOfDateInScheduleDiv)
 		tell application "System Events" to tell property list items of shiftRec ¬
 			to make new property list item at end with properties {kind:list, name:thisStartDate, value:shifts}
 		
@@ -594,7 +622,7 @@ to get_shifts()
 			}"
 			if the result = 0 then exit repeat
 			
-			tell document 1 to do JavaScript "form1.submit();"
+			tell document 1 to do JavaScript "formMySchedules.submit();"
 		end tell -- app "Safari"
 		
 		set progress completed steps to progress completed steps + 1
@@ -672,7 +700,7 @@ to create_events()
 				-- any character still left behind the number should be part of an actual shift key
 				-- we use the key to get the shift start and end times
 				-- an error means we couldn't get them (because the legends file is either missing or incomplete)
-				-- so we run the get_shift_legends() handler and try again
+				-- so we run the get_shift_details() handler and try again
 				repeat 2 times
 					try
 						tell application "System Events" to tell property list item thisKey of property list file legendPath
@@ -681,7 +709,7 @@ to create_events()
 						end tell
 						exit repeat
 					on error
-						get_shift_legends()
+						get_shift_details(thisKey)
 					end try
 				end repeat
 				
@@ -774,10 +802,28 @@ end create_events
 ------ Get shift legends (start/end times)
 ------------------------------------------------------
 ------------------------------------------------------
-to get_shift_legends()
+to get_shift_details(thisShift)
 	set progress completed steps to 46
-	set progress additional description to "Getting shift legends"
+	set progress additional description to "Getting shift details"
 	
+	set startTime to my_prompt(timePrompt1 & thisShift & startTimePrompt2, shiftLegendsPromptTitle, "13:00 or 1:00PM")
+	set endTime to my_prompt(timePrompt1 & thisShift & endTimePrompt2, shiftLegendsPromptTitle, "21:00 or 9:00PM")
+	
+	set progress completed steps to 48
+	set progress additional description to "Saving shift details"
+	
+	tell application "System Events"
+		tell property list items of l_plist to ¬
+			make new property list item at end with properties {kind:record, name:thisShift}
+		tell property list item thisShift of l_plist
+			make new property list item at end ¬
+				with properties {kind:string, name:"start", value:startTime}
+			make new property list item at end ¬
+				with properties {kind:string, name:"end", value:endTime}
+		end tell -- prop list item thisShift
+	end tell -- app "SE"
+	
+	(*	
 	-- click link to go to "Shift Legend" page, wait until page loads
 	click_query_first("a", "href", shiftLegendURL)
 	wait_for_page_load(strInLegendView)
@@ -813,7 +859,7 @@ to get_shift_legends()
 			-- there are six cells per row, but "Remarks" cell is not centered
 			set thisDiv to (thisDiv + numCenteredContentCells)
 			
-			-- write shift IDs and times into s_plist
+			-- write shift IDs and times into l_plist
 			tell application "System Events"
 				tell property list items of l_plist to ¬
 					make new property list item at end ¬
@@ -832,9 +878,11 @@ to get_shift_legends()
 		-- do nothing; an error means we reached the end of the list of shifts
 	end try
 	
+*)
+	
 	set progress additional description to ""
 	
-end get_shift_legends
+end get_shift_details
 
 
 
@@ -938,9 +986,11 @@ end get_val_by_id
 
 -- get value of an HTML tag, found by specified tag with specified attribute
 to get_val_by_selector(tag, attr, attrVal, tagIndex, nodeIndex)
+	-- this has the format: d.qSA(['tag[attr="attrVal"]').childNodes[nodeIndex].nodeValue.replace(/^\s+/,'').replace(/\s+$/,'') 
+	-- the regex at the end is to strip whitespace from the top and tail of the returned value
 	tell application "Safari" to tell document 1 to return (do JavaScript ¬
 		"document.querySelectorAll('" & tag & "[" & attr & "=\"" & attrVal & "\"]')[" & tagIndex & ¬
-		"].childNodes[" & nodeIndex & "].nodeValue")
+		"].childNodes[" & nodeIndex & "].nodeValue.replace(/^\\s+/,'').replace(/\\s+$/,'')")
 end get_val_by_selector
 
 -- enter text into an HTML input field, found by tag's ID
@@ -1064,24 +1114,87 @@ end trim_last_chars
 -- (button changes state as soon as the request is sent, and remains until 100% rendered)
 -- but even reading this button requires the user to allow SE to control the system
 -- and I don't want to ask for that
+--
+-- (update 7/27/2021: now we switch on useOldWFPL to decide which solution to use)
 to wait_for_page_load(desiredText)
 	delay 0.5
 	delay globalPreDelay
-	repeat 2 times
-		tell application "Safari"
-			repeat 30 times -- six seconds
-				if (document 1's source contains desiredText) then exit repeat
-				delay 0.2
-			end repeat
-			
-			tell document 1 to do JavaScript "document.readyState"
-			repeat until (the result = "complete")
-				delay 0.2
+	
+	if (useOldWFPL) then
+		repeat 2 times
+			tell application "Safari"
+				repeat 20 times -- six seconds
+					if (document 1's source contains desiredText) then exit repeat
+					delay 0.3
+				end repeat
+				
 				tell document 1 to do JavaScript "document.readyState"
+				repeat until (the result = "complete")
+					delay 0.3
+					tell document 1 to do JavaScript "document.readyState"
+				end repeat
+			end tell -- app "Safari"
+		end repeat
+	else -- i.e. if (not useOldWFPL)
+		set loaded to false
+		tell application "System Events"
+			repeat until (loaded)
+				if exists (buttons of UI elements of groups of toolbar 1 of window 1 ¬
+					of process "Safari" whose name = "Reload this page") then set loaded to true
+				if exists (buttons of groups of toolbar 1 of window 1 ¬
+					of process "Safari" whose name = "Reload this page") then set loaded to true
+				
+				delay 0.3
 			end repeat
-			
-			if document 1's source contains desiredText then return true
-		end tell
-	end repeat
+		end tell -- app "SE"
+	end if -- useOldWFPL
+	
+	tell application "Safari" to ¬
+		if (document 1's source contains desiredText) then return true
+	
 	return false
 end wait_for_page_load
+
+-- wait for one of three webpages to load, and return which one it was
+to wait_for_page_load3(desiredText1, desiredText2, desiredText3)
+	delay 0.5
+	delay globalPreDelay
+	
+	if (useOldWFPL) then
+		repeat 2 times
+			tell application "Safari"
+				repeat 20 times -- six seconds
+					if (document 1's source contains desiredText1) then exit repeat
+					if (document 1's source contains desiredText2) then exit repeat
+					if (document 1's source contains desiredText3) then exit repeat
+					delay 0.3
+				end repeat
+				
+				tell document 1 to do JavaScript "document.readyState"
+				repeat until (the result = "complete")
+					delay 0.3
+					tell document 1 to do JavaScript "document.readyState"
+				end repeat
+			end tell -- app "Safari"
+		end repeat
+	else -- i.e. if (not useOldWFPL)
+		set loaded to false
+		tell application "System Events"
+			repeat until (loaded)
+				if exists (buttons of UI elements of groups of toolbar 1 of window 1 ¬
+					of process "Safari" whose name = "Reload this page") then set loaded to true
+				if exists (buttons of groups of toolbar 1 of window 1 ¬
+					of process "Safari" whose name = "Reload this page") then set loaded to true
+				delay 0.3
+			end repeat
+		end tell -- app "SE"
+	end if -- useOldWFPL
+	
+	tell application "Safari"
+		if (document 1's source contains desiredText1) then return 1
+		if (document 1's source contains desiredText2) then return 2
+		if (document 1's source contains desiredText3) then return 3
+	end tell -- app "Safari"
+	
+	return 0
+end wait_for_page_load3
