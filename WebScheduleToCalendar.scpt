@@ -718,7 +718,7 @@ to create_events()
 				set evtEndDate to date (thisDate & " " & endTime)
 				
 				-- check to see if shift spans midnight
-				if (evtEndDate < evtStartDate) then set evtEndDate to (evtEndDate + 1 * days)
+				if (evtEndDate < evtStartDate) then set evtStartDate to evtStartDate - 1 * days
 				
 				-- if admin shift, add half an hour to the end time
 				if (isAdminShift) then set evtEndDate to (evtEndDate + 30 * minutes)
@@ -743,16 +743,26 @@ to create_events()
 					tell application "Calendar" to tell calendar calName
 						-- make sure the event still exists
 						if (exists event id thisEventID) then
-							-- edit any part of the event that is not longer accurate
 							set thisEvent to (event id thisEventID)
-							tell thisEvent
-								if (start date ≠ evtStartDate) then set start date to evtStartDate
-								if (end date ≠ evtEndDate) then set end date to evtEndDate
-								if (location ≠ address) then set location to address
-								if (summary ≠ eventTitle) then set summary to thisEventTitle
-								if (populateDescription) then if (description ≠ thisShift) then ¬
-									set description to thisShift
-							end tell -- thisEvent
+							
+							-- check if event start or end dates have changed (best to wipe and re-create)
+							if (start date of thisEvent ≠ evtStartDate) or (end date of thisEvent ≠ evtEndDate) then
+								delete thisEvent
+								set thisEvent to make new event with properties ¬
+									{summary:thisEventTitle, description:thisShift, start date:evtStartDate, end date:evtEndDate, location:address}
+								if (populateDescription) then set description of thisEvent to thisShift
+								
+								-- store the event UID
+								set item dayNum of eventIDs to (uid of thisEvent)
+							else -- i.e. event start and end dates have not changed
+								tell thisEvent
+									if (location ≠ address) then set location to address
+									if (summary ≠ eventTitle) then set summary to thisEventTitle
+									if (populateDescription) then if (description ≠ thisShift) then ¬
+										set description to thisShift
+								end tell -- thisEvent
+							end if -- evt start and end dates have changed
+							
 						else -- i.e. if there is an ID in eventIDs but the event can't be found (user may have deleted it)
 							-- go ahead and recreate it
 							set thisEvent to make new event with properties ¬
