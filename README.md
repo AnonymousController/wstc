@@ -54,14 +54,9 @@ These should all be self-explanatory.
 The facility address is only used to populate the location field for the calendar events, and may be safely left blank.
 
 ### Login settings
-The script signs in to MyAccess automatically, and therefore needs to store your MyAccess credentials.
-The credentials are stored in an encrypted format using a password that is randomly generated when you save the script file.
+The script signs in to MyAccess automatically, and therefore needs to store your MyAccess password.
+The password stored in an encrypted format using an internal password that is randomly generated when you save the script file.
 However, see the "Security" section later for more information and caveats.
-
-When the script reaches a secret question for which it does not have a stored answer, it will ask for your answer.
-The next time it encounters the question it will use the answer and you will not have to enter it again.
-
-If MyAccess rejects either your PIN or secret answer as incorrect, the script will wipe out its stored login information and will ask you to re-enter your credentials.
 <br/>
 
 ## Troubleshooting
@@ -93,9 +88,9 @@ The information is only used to sign in to MyAccess and is only used while the s
 The login information is stored to your computer's hard drive for use next time you run the script.
 The information is encrypted with the `openssl` command using AES-256 encryption—your PIN and secret answers are *not* stored in plaintext, so someone looking through your files won't know what your credentials are.
 3. **How does the script *use* the information?**
-Within the script itself, your PIN and answers are not stored in plaintext as long-term or even as intentional variables.
-The plaintext values are immediately passed to the encrypting function and only the encrypted results are stored.
-When the script places your plaintext answers into the login page, the plaintext answers are not stored—they are decrypted as the script needs them.
+Within the script itself, your password is not stored in plaintext as a long-term or even as an intentional variable.
+The plaintext value is immediately passed to the encrypting function and only the encrypted result is stored.
+When the script places your plaintext password into the login page, the plaintext password is not stored—it are decrypted when the script needs it.
 
 ### Caveats
 Although the plaintext login credentials are not stored on the disk, they can be gleaned at several points:
