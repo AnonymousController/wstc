@@ -35,16 +35,16 @@ property useOldWFPL : true
 -- ...if the user is not logged in, attempting to access this URL brings us directly to MyAccess login
 property webScheduleURL : "https://wmtscheduler.faa.gov/Views/WorksheetView/Home"
 property wmtLoginButtonID : "btnLogin"
-property emailInputID : "userEmail"
-property emailButtonID : "cont"
-property pinInputID : "PIN_INPUT"
-property answerInputID : "answer0"
-property myAccessLoginButtonID : "LOGIN_BUTTON"
+property emailInputID : "input27"
+property pinInputID : "input60"
+property formSubmitClass : "button button-primary"
 
 -- strings used to check which page is loaded
 property strInWMTSplashPage : "WARNING!!! WARNING!!! WARNING!!!"
-property strInEmailEntryPage : "Use Your Email Address"
-property strInPinEntryPage : "MyAccess PIN"
+property strInEmailEntryPage : "Keep me signed in"
+property strInPinEntryPage : "Verify with your password"
+property strInPinErrorPage : "Unable to sign in"
+property strInMFAPage : "Verify with something else"
 property strInWorksheetView : "<title>Worksheet View</title>"
 property strInScheduleView : "<title>My Schedule</title>"
 property strInLegendView : "<title>Shift Legend</title>"
@@ -90,21 +90,16 @@ property closeSafariPrompt : "The script will open the WMT Scheduler website.
 Should it close the website when it is done?"
 property closeCalendarPrompt : "The script will open Calendar.
 Should it close Calendar when it is done?"
-property emailPrompt : "Enter the email address you use for MyAccess:"
-property pinPrompt : "Enter the PIN you use for MyAccess:"
-property questionPrompt : "Enter your answer to the question: 
-
-"
+property emailPrompt : "Enter the email address you use for Modern MyAccess:"
+property pinPrompt : "Enter the password you use for Modern MyAccess:"
 property badPassPrompt : "The script has been recompiled since the last time it was run.
 The key used to encrypt your login information is no longer valid.
 
-Please re-enter the PIN you use for MyAccess:"
-property badEmailPrompt : "MyAccess has rejected your email address.
+Please re-enter the password you use for Modern MyAccess:"
+property badPinPrompt : "Modern MyAccess has rejected your password.
+NOTE: This password is not the same as your FAA network password. By default, it is the ten-digit number on the back of your PIV card.
 
-Please re-enter the email address you use for MyAccess:"
-property badPinPrompt : "MyAccess has rejected the PIN and/or secret answer.
-
-Please re-enter the PIN you use for MyAccess:"
+Please re-enter your Modern MyAccess password:"
 property timePrompt1 : "WSTC has encountered a shift it does not have a legend for. The shift is:
 
 "
@@ -117,6 +112,7 @@ What is the END TIME for this shift (local time)?"
 property strAllowJSinAE : "The script needs to run JavaScript in Safari in order to apply your login information and get the shifts from WMT Scheduler. The system will ask for an administrator's username and password to allow this.
 The script can click through the menu items for you, which will require permission to control accessibility elements, or you can do the process manually by following the linked instructions. Which would you like?"
 property strWaitForJS : "Please click Continue once you have allowed JavaScript access in Safari"
+property strWaitForMFA : "Please click Continue once you have completed the two-factor authentication process in Modern MyAccess"
 property strWaitForUser : "Waiting for user input…"
 property strScriptError : "The script encountered an error and must quit now. Several common errors boil down to the script running too quickly and/or a page being slow to load; try running the script one or two more times to make sure the error is persistent.
 
@@ -400,7 +396,6 @@ to create_settings()
 			make new property list item at end with properties {kind:boolean, name:"closeCalendarWhenDone", value:closeCalendarWhenDone}
 			make new property list item at end with properties {kind:string, name:"email", value:email}
 			make new property list item at end with properties {kind:string, name:"pin", value:encPin}
-			make new property list item at end with properties {kind:record, name:"secQandA"}
 		end tell -- prop list items of s_plist
 	end tell -- app "SE"
 	
@@ -415,7 +410,7 @@ end create_settings
 ------------------------------------------------------
 ------------------------------------------------------
 to login()
-	-- open Web Scheduler splash page
+	-- open Web Scheduler home page
 	set progress additional description to "Opening WMT Scheduler"
 	if not (safariWasRunning) then
 		-- no need to activate, we activated it during initialize()
@@ -427,123 +422,105 @@ to login()
 	end if -- not safariWasRunning
 	
 	-- wait until login or home page loads
-	set loadedPage to wait_for_page_load3(strInWMTSplashPage, strInEmailEntryPage, strInWorksheetView)
-	if (loadedPage = 3) then
-		-- we had a logged-in session already, yay. Exit login() handler
-		return
-	else if (loadedPage = 2) then
-		-- we have arrived directly at the MyAccess email entry page; continue
-	else if (loadedPage = 1) then
-		-- we have arrived at the main WMT splash page; click the login button, which will take us to MyAccess:
-		set progress additional description to "Opening MyAccess login page"
-		click_ID(wmtLoginButtonID)
-		wait_for_page_load(strInEmailEntryPage)
-	else
-		-- the page loaded was none of the expected pages
-		error "The WMT Splash Page failed to load"
-	end if -- loadedPage = ?
+	-- give it two tries just in case an intermediate page loads along the way
+	repeat 3 times
+		set loadedPage to wait_for_page_load4(strInWMTSplashPage, strInEmailEntryPage, strInWorksheetView, strInWorksheetView)
+		if (loadedPage = 3) or (loadedPage = 4) then
+			-- we had a logged-in session already, yay. Exit login() handler
+			return
+		else if (loadedPage = 2) then
+			-- we have arrived directly at the MyAccess email entry page; continue
+			exit repeat
+		else if (loadedPage = 1) then
+			-- we have arrived at the main WMT splash page; click the login button, which will take us to MyAccess:
+			set progress additional description to "Opening Modern MyAccess login page"
+			click_ID(wmtLoginButtonID)
+		else
+			-- the page loaded was none of the expected pages; try again
+			delay 1
+		end if -- loadedPage = ?
+	end repeat
 	set progress completed steps to 22
 	
 	-- whether we got here directly (lP = 2) or indirectly (lP=1), we should be at the MyAccess email entry page
-	-- enter user's email address, repeating process if the email was rejected
-	repeat
-		-- enter email address and manually remove "disabled" attribute on button; submit
-		set progress completed steps to 23
-		set progress additional description to "Entering email address"
-		input_by_ID(emailInputID, email)
-		remove_attr_by_ID(emailButtonID, "disabled")
-		set progress additional description to "Submitting email address"
-		click_ID(emailButtonID)
-		set progress completed steps to 24
-		
-		-- wait until PIN-and-question page loads
-		if wait_for_page_load(strInPinEntryPage) then exit repeat
-		
-		-- if wfpl returns false we must still be on the email entry page
-		-- so the email must have been wrong
-		-- ask for user's corrected email and write it back to s_plist
-		set email to my_prompt(badEmailPrompt, settingsPromptTitle, "archie.league@faa.gov")
-		tell application "System Events" to tell property list items of s_plist to ¬
-			make new property list item at end with properties {kind:string, name:"email", value:email}
-	end repeat
+	-- enter email address; submit
+	set progress completed steps to 23
+	set progress additional description to "Entering email address"
+	input_by_ID(emailInputID, email)
+	set progress additional description to "Submitting email address"
+	click_query_first("input", "class", formSubmitClass)
+	set progress completed steps to 24
 	
-	-- enter user's PIN and secret answer, repeating process if they were rejected
-	repeat 4 times -- there are only three answers, no point in dragging it out
-		
-		set progress completed steps to 27
-		set progress additional description to "Entering PIN"
-		-- enter PIN (catching a decrypt error)
-		try
-			input_by_ID(pinInputID, str_dec(encPin, pw))
-			delay 2 -- necessary to allow "signedChallenge" var to populate? I think the page "phones home" to get it
-		on error
-			-- an error means the saved decrypt PW is bad (script was recompiled)
-			-- ask user to re-enter PIN
-			set encPin to my_prompt_enc(badPassPrompt, loginPromptTitle, pw)
-			
-			-- enter the PIN
-			input_by_ID(pinInputID, str_dec(encPin, pw))
-			
-			-- store the new encrypted pin		
-			-- and because the password was bad, the secret questions are also no longer good
-			tell application "System Events" to tell property list items of s_plist
-				make new property list item at end with properties {kind:string, name:"pin", value:encPin}
-				make new property list item at end with properties {kind:record, name:"secQandA"}
-			end tell
-			-- no need to delay—the user will have to enter their secret answer, giving "signedChallenge" time
-		end try -- to enter PIN
-		set progress completed steps to 28
-		
-		set progress additional description to "Entering secret question"
-		-- determine secret question
-		set question to get_val_by_selector("label", "for", answerInputID, 0, 0)
-		
-		-- attempt to look up answer using security question as key; if it isn't stored, prompt user
-		try
-			tell application "System Events" to tell property list item "secQandA" of s_plist ¬
-				to tell property list item question to set encAnswer to value
-		on error
-			set encAnswer to my_prompt_enc(questionPrompt & question, loginPromptTitle, pw)
-			tell application "System Events" to tell property list item "secQandA" of s_plist to ¬
-				tell property list items to make new property list item at end ¬
-					with properties {kind:string, name:question, value:encAnswer}
-		end try -- get secret answer by question as key
-		
-		-- input the answer
-		input_by_ID(answerInputID, str_dec(encAnswer, pw))
-		set progress completed steps to 29
-		
-		set progress additional description to "Submitting PIN and secret question"
-		-- I'm not sure how, but sometimes it happens that the PIN field is empty before the login button gets clicked
-		-- this causes the page to issue a JavaScript alert and we can't interact with it!
-		-- check now to make sure, and if it is re-enter it
-		if (get_val_by_id(pinInputID) = "") then
-			input_by_ID(pinInputID, str_dec(encPin, pw))
-			delay 2 -- to allow "signedChallenge" to populate
-		end if
-		
-		-- manually remove "disabled" attribute on button; submit
-		remove_attr_by_ID(myAccessLoginButtonID, "disabled")
-		click_ID(myAccessLoginButtonID)
-		
-		-- wait until home page loads
-		if (wait_for_page_load(strInWorksheetView)) then exit repeat
-		
-		-- if wfpl returns false, MyAccess didn't like the PIN and/or secret answer
+	-- wait until PIN-entry page loads
+	wait_for_page_load(strInPinEntryPage)
+	
+	set progress completed steps to 27
+	set progress additional description to "Entering PIN"
+	-- enter PIN (catching a decrypt error)
+	try
+		input_by_ID(pinInputID, str_dec(encPin, pw))
+	on error
+		-- an error means the saved decrypt PW is bad (script was recompiled)
 		-- ask user to re-enter PIN
-		set encPin to my_prompt_enc(badPinPrompt, loginPromptTitle, pw)
+		set encPin to my_prompt_enc(badPassPrompt, loginPromptTitle, pw)
 		
 		-- enter the PIN
 		input_by_ID(pinInputID, str_dec(encPin, pw))
 		
-		-- store the new encrypted pin		
-		-- it would be great to only remove the offending Q/A pair, but it's easier to just wipe them all
-		tell application "System Events" to tell property list items of s_plist
+		-- store the new encrypted pin
+		tell application "System Events" to tell property list items of s_plist to ¬
 			make new property list item at end with properties {kind:string, name:"pin", value:encPin}
-			make new property list item at end with properties {kind:record, name:"secQandA"}
-		end tell
-		-- no need to delay—the user will have to enter their secret answer, giving "signedChallenge" time to populate
+		
+	end try -- to enter PIN
+	
+	-- submit
+	set progress completed steps to 28
+	set progress additional description to "Submitting PIN"
+	click_query_first("input", "class", formSubmitClass)
+	
+	delay 0.2
+	
+	-- check if we have loaded WMT, or loaded the MFA page, or been denied access
+	repeat 3 times
+		set loadedPage to wait_for_page_load4(strInWorksheetView, strInMFAPage, strInPinErrorPage, strInWMTSplashPage)
+		if (loadedPage = 1) then
+			-- loaded WMT, great
+			exit repeat
+		else if (loadedPage = 2) then
+			-- wait for user to complete MFA process
+			display dialog strWaitForMFA buttons {"Continue"} default button 1 giving up after 600 with title "WSTC"
+		else if (loadedPage = 3) then
+			-- MyAccess didn't like the PIN and/or email
+			-- ask user to re-enter PIN
+			set progress completed steps to 27
+			set progress additional description to "Entering PIN"
+			set encPin to my_prompt_enc(badPinPrompt, loginPromptTitle, pw)
+			input_by_ID(pinInputID, str_dec(encPin, pw))
+			
+			-- store the new encrypted pin
+			tell application "System Events" to tell property list items of s_plist to ¬
+				make new property list item at end with properties {kind:string, name:"pin", value:encPin}
+			
+			-- submit
+			set progress completed steps to 28
+			set progress additional description to "Submitting PIN"
+			click_query_first("input", "class", formSubmitClass)
+		else if (loadedPage = 4) then
+			-- sometimes (all of the time?) a weird thing happens where we successfully log in but then get kicked back to the splash page
+			-- we should be logged in by this point (or else have seen some kind of error or other result)
+			-- so let's just try clicking the button again...
+			click_ID(wmtLoginButtonID)
+		else
+			-- some other page has loaded, likely an intermediate page on the way to WMT
+			-- delay a bit and try again
+			delay 1
+		end if -- loadedPage = ?
 	end repeat
+	
+	-- one final sanity check to make sure we're at the right page
+	-- this line is only reached if there was at least one failure earlier in the process
+	if (not wait_for_page_load(strInWorksheetView)) then error "WMT failed to load"
+	
 end login
 
 
@@ -985,7 +962,7 @@ end click_ID
 -- simulate button press on HTML element, found by first tag with specified attribute
 to click_query_first(tag, attr, attrVal)
 	tell application "Safari" to tell document 1 to do JavaScript ¬
-		"document.querySelectorAll('" & tag & "[" & attr & "=\"" & attrVal & "\"]')[0].click()"
+		"document.querySelectorAll('" & tag & "[" & attr & "=\"" & attrVal & "\"]')[0].click();"
 end click_query_first
 
 -- get value of an HTML tag, found by tag's ID
@@ -1005,8 +982,13 @@ end get_val_by_selector
 
 -- enter text into an HTML input field, found by tag's ID
 to input_by_ID(tagID, theText)
-	tell application "Safari" to tell document 1 to do JavaScript ¬
-		"document.getElementById('" & tagID & "').value = '" & theText & "';"
+	tell application "Safari" to tell document 1
+		do JavaScript "document.getElementById('" & tagID & "').value = '" & theText & "';"
+		-- tell the annoying JavaScript validator function that we have in fact set a value in the input field
+		-- Shimsho, https://stackoverflow.com/a/75997631
+		do JavaScript "document.getElementById('" & tagID & "').dispatchEvent( new Event('input', {bubbles: true}) );"
+	end tell
+	delay 0.05
 end input_by_ID
 
 -- activate an application, then return the original process to the front
@@ -1134,7 +1116,7 @@ to wait_for_page_load(desiredText)
 		repeat 2 times
 			tell application "Safari"
 				repeat 20 times -- six seconds
-					if (document 1's source contains desiredText) then exit repeat
+					if (document 1's source contains desiredText) or (document 1's text contains desiredText) then exit repeat
 					delay 0.3
 				end repeat
 				
@@ -1160,13 +1142,13 @@ to wait_for_page_load(desiredText)
 	end if -- useOldWFPL
 	
 	tell application "Safari" to ¬
-		if (document 1's source contains desiredText) then return true
+		if (document 1's source contains desiredText) or (document 1's text contains desiredText) then return true
 	
 	return false
 end wait_for_page_load
 
--- wait for one of three webpages to load, and return which one it was
-to wait_for_page_load3(desiredText1, desiredText2, desiredText3)
+-- wait for one of four webpages to load, and return which one it was
+to wait_for_page_load4(desiredText1, desiredText2, desiredText3, desiredText4)
 	delay 0.5
 	delay globalPreDelay
 	
@@ -1174,9 +1156,10 @@ to wait_for_page_load3(desiredText1, desiredText2, desiredText3)
 		repeat 2 times
 			tell application "Safari"
 				repeat 20 times -- six seconds
-					if (document 1's source contains desiredText1) then exit repeat
-					if (document 1's source contains desiredText2) then exit repeat
-					if (document 1's source contains desiredText3) then exit repeat
+					if (document 1's source contains desiredText1) or (document 1's text contains desiredText1) then exit repeat
+					if (document 1's source contains desiredText2) or (document 1's text contains desiredText2) then exit repeat
+					if (document 1's source contains desiredText3) or (document 1's text contains desiredText3) then exit repeat
+					if (document 1's source contains desiredText4) or (document 1's text contains desiredText4) then exit repeat
 					delay 0.3
 				end repeat
 				
@@ -1201,10 +1184,11 @@ to wait_for_page_load3(desiredText1, desiredText2, desiredText3)
 	end if -- useOldWFPL
 	
 	tell application "Safari"
-		if (document 1's source contains desiredText1) then return 1
-		if (document 1's source contains desiredText2) then return 2
-		if (document 1's source contains desiredText3) then return 3
+		if (document 1's source contains desiredText1) or (document 1's text contains desiredText1) then return 1
+		if (document 1's source contains desiredText2) or (document 1's text contains desiredText2) then return 2
+		if (document 1's source contains desiredText3) or (document 1's text contains desiredText3) then return 3
+		if (document 1's source contains desiredText4) or (document 1's text contains desiredText4) then return 4
 	end tell -- app "Safari"
 	
 	return 0
-end wait_for_page_load3
+end wait_for_page_load4
