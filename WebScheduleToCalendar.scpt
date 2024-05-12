@@ -35,13 +35,13 @@ property useOldWFPL : true
 -- ...if the user is not logged in, attempting to access this URL brings us directly to MyAccess login
 property webScheduleURL : "https://wmtscheduler.faa.gov/Views/WorksheetView/Home"
 property wmtLoginButtonID : "btnLogin"
-property emailInputID : "input27"
-property pinInputID : "input60"
+property emailInputName : "identifier"
+property pinInputName : "credentials.passcode"
 property formSubmitClass : "button button-primary"
 
 -- strings used to check which page is loaded
 property strInWMTSplashPage : "WARNING!!! WARNING!!! WARNING!!!"
-property strInEmailEntryPage : "Keep me signed in"
+property strInEmailEntryPage : "Welcome to the new MyAccess Login"
 property strInPinEntryPage : "Verify with your password"
 property strInPinErrorPage : "Unable to sign in"
 property strInMFAPage : "Verify with something else"
@@ -446,7 +446,7 @@ to login()
 	-- enter email address; submit
 	set progress completed steps to 23
 	set progress additional description to "Entering email address"
-	input_by_ID(emailInputID, email)
+	input_by_name(emailInputName, email)
 	set progress additional description to "Submitting email address"
 	click_query_first("input", "class", formSubmitClass)
 	set progress completed steps to 24
@@ -458,14 +458,14 @@ to login()
 	set progress additional description to "Entering PIN"
 	-- enter PIN (catching a decrypt error)
 	try
-		input_by_ID(pinInputID, str_dec(encPin, pw))
+		input_by_name(pinInputName, str_dec(encPin, pw))
 	on error
 		-- an error means the saved decrypt PW is bad (script was recompiled)
 		-- ask user to re-enter PIN
 		set encPin to my_prompt_enc(badPassPrompt, loginPromptTitle, pw)
 		
 		-- enter the PIN
-		input_by_ID(pinInputID, str_dec(encPin, pw))
+		input_by_name(pinInputName, str_dec(encPin, pw))
 		
 		-- store the new encrypted pin
 		tell application "System Events" to tell property list items of s_plist to ¬
@@ -495,7 +495,7 @@ to login()
 			set progress completed steps to 27
 			set progress additional description to "Entering PIN"
 			set encPin to my_prompt_enc(badPinPrompt, loginPromptTitle, pw)
-			input_by_ID(pinInputID, str_dec(encPin, pw))
+			input_by_name(pinInputName, str_dec(encPin, pw))
 			
 			-- store the new encrypted pin
 			tell application "System Events" to tell property list items of s_plist to ¬
@@ -980,16 +980,16 @@ to get_val_by_selector(tag, attr, attrVal, tagIndex, nodeIndex)
 		"].childNodes[" & nodeIndex & "].nodeValue.replace(/^\\s+/,'').replace(/\\s+$/,'')")
 end get_val_by_selector
 
--- enter text into an HTML input field, found by tag's ID
-to input_by_ID(tagID, theText)
+-- enter text into an HTML input field, found by element's name (first matching)
+to input_by_name(theName, theText)
 	tell application "Safari" to tell document 1
-		do JavaScript "document.getElementById('" & tagID & "').value = '" & theText & "';"
+		do JavaScript "document.getElementsByName('" & theName & "')[0].value = '" & theText & "';"
 		-- tell the annoying JavaScript validator function that we have in fact set a value in the input field
 		-- Shimsho, https://stackoverflow.com/a/75997631
-		do JavaScript "document.getElementById('" & tagID & "').dispatchEvent( new Event('input', {bubbles: true}) );"
+		do JavaScript "document.getElementsByName('" & theName & "')[0].dispatchEvent( new Event('input', {bubbles: true}) );"
 	end tell
 	delay 0.05
-end input_by_ID
+end input_by_name
 
 -- activate an application, then return the original process to the front
 to my_activate_return(appName, makeHidden)
